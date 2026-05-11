@@ -10,6 +10,9 @@ Legal disclaimer
 Korail2 (with N-card discount support)
 =======================================
 
+[![PyPI](https://img.shields.io/pypi/v/korail2-ncard)](https://pypi.org/project/korail2-ncard/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/korail2-ncard)](https://pypi.org/project/korail2-ncard/)
+
 A fork of [korail2](https://github.com/carpedm20/korail2) with added support for **KorailTalk N-card discounted tickets**.
 
 The original korail2 project appears to be no longer actively maintained, so this fork was created to keep the library working with the current Korail API and to add N-card discount functionality.
