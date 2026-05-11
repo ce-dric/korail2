@@ -245,6 +245,32 @@ If Korail only allows immediate payment/issuance for a discounted ticket, comple
 ```
 
 
+Using as an agent skill
+-----------------------
+
+`scripts/ktx_booking.py` is a standalone CLI helper that wraps this library for agent use. It handles train search, reservation, N-card discounted booking, and cancellation via subcommands.
+
+```bash
+# Install
+pip install korail2-ncard pycryptodome
+
+# Search
+python3 scripts/ktx_booking.py search 서울 부산 20260328 090000 --limit 5
+
+# Reserve
+python3 scripts/ktx_booking.py reserve 서울 부산 20260328 090000 --train-id <train_id>
+
+# N-card
+python3 scripts/ktx_booking.py ncard-list
+python3 scripts/ktx_booking.py ncard-search 대전 서울 20260512 100000 --ncard-index 1
+python3 scripts/ktx_booking.py reserve 대전 서울 20260512 100000 --train-id <train_id> --ncard-no <card_no>
+```
+
+See [`SKILL.md`](SKILL.md) for the full workflow and credential setup.
+
+The helper is based on [NomaDamas/k-skill](https://github.com/NomaDamas/k-skill) (MIT License) with N-card support added.
+
+
 Todo
 ----
 
