@@ -65,8 +65,10 @@ KORAIL_PAYMENT_VOUCHER = "%s/ebizmw/PrdPkgBoucherView.do" % KORAIL_DOMAIN
 KORAIL_CODE = "%s.common.code.do" % KORAIL_MOBILE
 KORAIL_NCARD_SCHEDULE_VIEW = "%s.research.dcntCrdScheduleView.do" % KORAIL_MOBILE
 KORAIL_NCARD_USE_HISTORY = "%s.ticket.dcntCrdUseQry.do" % KORAIL_MOBILE
+KORAIL_SEAT_ASSIGN_SCHEDULE_VIEW = "%s.research.assignScheduleView.do" % KORAIL_MOBILE
 
 NCARD_DISCOUNT_CODE = "153"
+NCARD_SEAT_ASSIGN_MENU_ID = "A2"
 
 DEFAULT_USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 13; SM-S928N Build/UP1A.231005.007)"
 
@@ -401,6 +403,15 @@ class NCardTrain(Train):
             self.wait_reserve_flag = int(self.wait_reserve_flag)
 
         self.price = _get_first(data, ('cmtrPrc', 'h_rcvd_amt'))
+        self.fare = _get_first(data, ('h_rcvd_fare', 'rcvdFare'))
+        self.discount_name = self.reserve_possible_name
+        self.general_discount_rate = _get_first(data, ('h_gen_disc_rt', 'genDiscRt'))
+        self.special_discount_rate = _get_first(data, ('h_spe_disc_rt', 'speDiscRt'))
+        self.train_discount_rate = _get_first(data, ('h_train_disc_gen_rt', 'trainDiscGenRt'))
+        self.general_remaining_seats = _get_first(data, ('h_std_rest_seat_cnt', 'stdRestSeatCnt'))
+        self.standing_remaining_seats = _get_first(data, ('h_stnd_rest_seat_cnt', 'stndRestSeatCnt'))
+        self.standing_seat = _get_first(data, ('h_stnd_rsv_cd', 'stndRsvCd'))
+        self.standing_seat_name = _get_first(data, ('h_stnd_rsv_nm', 'stndRsvNm'))
         self.route_code = _get_first(data, ('routCd', 'h_rout_cd'))
         self.route_name = _get_first(data, ('dturNm', 'h_rout_nm'))
         self.raw = data
@@ -415,6 +426,8 @@ class NCardTrain(Train):
             )
         if self.price:
             route += " %s원" % self.price
+        if self.discount_name:
+            route += " %s" % self.discount_name
         return "[%s] %s" % (train_name, route)
 
 
@@ -1161,6 +1174,74 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
                 train_infos = [train_infos]
 
             trains = [NCardTrain(info) for info in train_infos]
+            if train_type != TrainType.ALL:
+                trains = [train for train in trains if train.train_group == train_type]
+            if len(trains) == 0:
+                raise NoResultsError()
+            return trains
+
+    def search_owned_ncard_trains(self, ncard, dep=None, arr=None, date=None, time=None,
+                                  train_type=None, segment_index=0, passenger_count=1,
+                                  room_class="9", seat_attribute="015",
+                                  dirt_chtn_dv_cd="1", transfer_arrival=""):
+        """Search discounted trains for an already-owned N-card.
+
+        This mirrors KorailTalk's "My Ticket > Pass > N-card > Ticket booking"
+        flow. It uses the owned N-card detail returned by :meth:`owned_ncards`
+        and the seat-assignment schedule endpoint; it does not reserve or pay
+        for a ticket.
+        """
+        kst_now = datetime.utcnow() + timedelta(hours=9)
+        if date is None:
+            date = kst_now.strftime("%Y%m%d")
+        if time is None:
+            time = "000000"
+
+        segments = ncard.segments or []
+        if not segments:
+            raise KorailError("N-card has no route segment metadata")
+        segment = segments[segment_index]
+
+        if dep is None:
+            dep = _get_utf8(segment, 'dptRsStnNm') or ncard.dep_name
+        if arr is None:
+            arr = _get_utf8(segment, 'arvRsStnNm') or ncard.arr_name
+        if train_type is None:
+            train_type = _get_utf8(segment, 'trnGpCd') or TrainType.KTX
+
+        data = {
+            'Device': self._device,
+            'Version': self._version,
+            'Key': self._key,
+            'menuId': NCARD_SEAT_ASSIGN_MENU_ID,
+            'dptDt': date,
+            'dptTm': time,
+            'dptRsStnNm': dep,
+            'arvRsStnNm': arr,
+            'trnGpCd': train_type,
+            'psrmClCd': room_class,
+            'seatAttCd1': seat_attribute,
+            'psgNum1': str(passenger_count),
+            'stlbDturDvNm1': _get_utf8(segment, 'stlbDturDvNm') or '',
+            'dirtChtnDvCd': dirt_chtn_dv_cd,
+            'chtnArvRsStnNm': transfer_arrival,
+        }
+
+        r = self._session.post(KORAIL_SEAT_ASSIGN_SCHEDULE_VIEW, data=data)
+        j = json.loads(r.text)
+
+        if self._result_check(j):
+            train_infos = (
+                j.get('trn_infos', {}).get('trn_info') or
+                j.get('trn_info') or
+                []
+            )
+            if isinstance(train_infos, dict):
+                train_infos = [train_infos]
+
+            trains = [NCardTrain(info) for info in train_infos]
+            if train_type != TrainType.ALL:
+                trains = [train for train in trains if train.train_group == train_type]
             if len(trains) == 0:
                 raise NoResultsError()
             return trains

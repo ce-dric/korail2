@@ -204,17 +204,23 @@ There are 4 options in ReserveOption class.
 Korail N-card support is experimental. It is based on static analysis of the
 KorailTalk Android API and keeps payment automation out of scope.
 
-`search_ncard_trains` calls the N-card discounted ticket schedule endpoint.
-`build_ncard_reservation_payload` builds the reservation payload with the
-N-card discount code, but does not submit a reservation request.
+For already-owned N-cards, use `owned_ncards` first and pass one of those cards
+to `search_owned_ncard_trains`. This mirrors KorailTalk's "My Ticket > Pass >
+N-card > Ticket booking" train lookup flow and returns discount/sold-out/
+standing-seat labels from the seat-assignment schedule API.
 
 ```python
->>> trains = korail.search_ncard_trains(
-...     '서울',
-...     '부산',
-...     dcnt_card_kind_mg_no='YOUR_NCARD_KIND_MANAGEMENT_NO',
-...     use_psb_tno='YOUR_NCARD_REMAINING_OR_ALLOWED_COUNT',
+>>> cards = korail.owned_ncards()
+>>> trains = korail.search_owned_ncard_trains(
+...     cards[0],
+...     dep='대전',
+...     arr='서울',
+...     date='20260512',
+...     time='100000',
+...     train_type=TrainType.KTX,
 ... )
+>>> trains[0].discount_name
+'15%할인'
 >>> payload = korail.build_ncard_reservation_payload(
 ...     trains[0],
 ...     ncard_no='YOUR_NCARD_NO',
@@ -223,9 +229,10 @@ N-card discount code, but does not submit a reservation request.
 '153'
 ```
 
-The N-card metadata arguments must come from the user's owned N-card data in
-KorailTalk. If Korail only allows immediate payment/issuance for a discounted
-ticket, complete the final step in the official app or website.
+`search_ncard_trains` is retained for N-card kind/product schedule research,
+but bought-card ticket booking should prefer `search_owned_ncard_trains`.
+If Korail only allows immediate payment/issuance for a discounted ticket,
+complete the final step in the official app or website.
 
 ### 4. Show reservations ####
 
