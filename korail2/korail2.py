@@ -11,6 +11,9 @@ import requests
 import itertools
 import sys
 import base64
+import time
+import random
+import string
 
 from datetime import datetime, timedelta
 from six import with_metaclass
@@ -60,9 +63,126 @@ KORAIL_PAYMENT = "%s/ebizmw/PrdPkgMainList.do" % KORAIL_DOMAIN
 KORAIL_PAYMENT_VOUCHER = "%s/ebizmw/PrdPkgBoucherView.do" % KORAIL_DOMAIN
 
 KORAIL_CODE = "%s.common.code.do" % KORAIL_MOBILE
+KORAIL_NCARD_SCHEDULE_VIEW = "%s.research.dcntCrdScheduleView.do" % KORAIL_MOBILE
+KORAIL_NCARD_USE_HISTORY = "%s.ticket.dcntCrdUseQry.do" % KORAIL_MOBILE
+KORAIL_SEAT_ASSIGN_SCHEDULE_VIEW = "%s.research.assignScheduleView.do" % KORAIL_MOBILE
 
-DEFAULT_USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 5.1.1; Nexus 4 Build/LMY48T)"
+NCARD_DISCOUNT_CODE = "153"
+NCARD_SEAT_ASSIGN_MENU_ID = "A2"
 
+DEFAULT_USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 13; SM-S928N Build/UP1A.231005.007)"
+
+DYNAPATH_PATHS = [
+    "/classes/com.korail.mobile.certification.TicketReservation",
+    "/classes/com.korail.mobile.nonMember.NonMemTicket",
+    "/classes/com.korail.mobile.seatMovie.ScheduleView",
+    "/classes/com.korail.mobile.seatMovie.ScheduleViewSpecial",
+    "/classes/com.korail.mobile.trn.prcFare.do",
+    "/classes/com.korail.mobile.login.Login"
+]
+
+class DynaPathMasterEngine:
+    APP_ID = "com.korail.talk"
+    AS_VALUE = "%5B38ff229cb34c7dda8e28220a2d750cce%5D"
+    DEVICE_MODEL = "SM-S928N"
+    OS_TYPE = "Android"
+    SDK_VERSION = "v1"
+
+    def __init__(self):
+        self.TABLE = "3FE9jgRD4KdCyuawklqGJYmvfMn15P7US8XbxeLQtWT6OicBAopINs2Vh0HZrz"
+        self.I8, self.I9, self.I10 = 161, 30, 2
+        self.app_start_ts = str(int(time.time() * 1000))
+
+    def string2xA1s(self, data_str):
+        result = []
+        i = 0
+        while i < len(data_str):
+            cp = ord(data_str[i])
+            i += 1
+            if cp < 128: result.append(cp)
+            elif cp < 2048:
+                result.append(128 | ((cp >> 7) & 15))
+                result.append(cp & 127)
+            elif cp >= 262144:
+                result.append(160)
+                result.append((cp >> 14) & 127)
+                result.append((cp >> 7) & 127)
+                result.append(cp & 127)
+            elif (63488 & cp) != 55296:
+                result.append(((cp >> 14) & 15) | 144)
+                result.append((cp >> 7) & 127)
+                result.append(cp & 127)
+        return result
+
+    def make_key(self, key_str):
+        big_int_add = 0
+        for char in key_str:
+            cp = ord(char)
+            i9_bit = 32768
+            for _ in range(16):
+                if (i9_bit & cp) != 0: break
+                i9_bit >>= 1
+            big_int_add = (big_int_add * (i9_bit << 1)) + cp
+        return big_int_add
+
+    def _internal_i(self, base_table, remainder, encode_size, current_sb):
+        j8_count = 0
+        for k in range(len(base_table)):
+            char = base_table[k]
+            if char not in current_sb:
+                if j8_count == remainder: return char
+                j8_count += 1
+        return ' '
+
+    def make_encode_table(self, num, encode_size, base_table):
+        sb = ""
+        temp_num = num
+        for i in range(encode_size):
+            j8_divisor = encode_size - i
+            remainder = temp_num % j8_divisor
+            char = self._internal_i(base_table, remainder, len(base_table), sb)
+            sb += char
+            temp_num //= j8_divisor
+        return sb
+
+    def encode_normal_be(self, data_str, table, i8=161, i9=30, i10=2):
+        list_data = self.string2xA1s(data_str)
+        sb, i_arr = [], [0] * (i10 + 1)
+        idx, size = 0, len(list_data) % i10
+        size2 = len(list_data) - size
+        while idx < size2:
+            val = 0
+            for _ in range(i10):
+                val = (val * i8) + list_data[idx]
+                idx += 1
+            for i in range(i10 + 1):
+                i_arr[i] = val % i9
+                val //= i9
+            for i in range(i10, -1, -1): sb.append(table[i_arr[i]])
+        if size > 0:
+            val = 0
+            for _ in range(size):
+                val = (val * i8) + list_data[idx]
+                idx += 1
+            for i in range(size + 1):
+                i_arr[i] = val % i9
+                val //= i9
+            while size >= 0:
+                sb.append(table[i_arr[size]])
+                size -= 1
+        return "".join(sb)
+
+    def generate_token(self, device_id, ts, rand):
+        plaintext = (f"ai={self.APP_ID}&di={device_id}&as={self.AS_VALUE}&"
+                     f"su=false&dbg=false&emu=false&hk=false&it={self.app_start_ts}&"
+                     f"ts={ts}&rt=0&os=13&dm={self.DEVICE_MODEL}&st={self.OS_TYPE}&sv={self.SDK_VERSION}")
+
+        dyn_key = f"v1+{rand}+{ts}"
+        key_enc = self.encode_normal_be(dyn_key, self.TABLE, self.I8, self.I9, self.I10)
+        big_key = self.make_key(dyn_key)
+        custom_table = self.make_encode_table(big_key, self.I9, self.TABLE)
+        body_enc = self.encode_normal_be(plaintext, custom_table, self.I8, self.I9, self.I10)
+        return f"bEeEP{self.TABLE[len(key_enc)]}{key_enc}{body_enc}"
 
 def _get_utf8(data, key, default=None):
     v = data.get(key, default)
@@ -74,6 +194,15 @@ def _get_utf8(data, key, default=None):
         return v.encode('utf-8')
     else:
         return v
+
+
+def _get_first(data, keys, default=None):
+    for key in keys:
+        value = _get_utf8(data, key)
+        if value is not None:
+            return value
+    return default
+
 
 class Schedule(object):
     """Korail train object. Highly inspired by `korail.py
@@ -243,6 +372,106 @@ class Train(Schedule):
     def has_general_waiting_list(self):
         return self.wait_reserve_flag == 9
 
+
+class NCardTrain(Train):
+    """N-card discounted ticket train candidate returned by KorailTalk."""
+
+    def __init__(self, data):
+        self.train_type = _get_first(data, ('h_trn_clsf_cd', 'trnClsfCd', 'trnGpCd'))
+        self.train_type_name = _get_first(data, ('h_trn_clsf_nm', 'trnClsfNm', 'dturNm'))
+        self.train_group = _get_first(data, ('h_trn_gp_cd', 'trnGpCd'))
+        self.train_no = _get_first(data, ('h_trn_no', 'trnNo'))
+        self.delay_time = _get_first(data, ('h_expct_dlay_hr', 'expctDlayHr'), '')
+
+        self.dep_name = _get_first(data, ('h_dpt_rs_stn_nm', 'dptRsStnNm'))
+        self.dep_code = _get_first(data, ('h_dpt_rs_stn_cd', 'dptRsStnCd'))
+        self.dep_date = _get_first(data, ('h_dpt_dt', 'dptDt', 'runDt'))
+        self.dep_time = _get_first(data, ('h_dpt_tm', 'dptTm'))
+
+        self.arr_name = _get_first(data, ('h_arv_rs_stn_nm', 'arvRsStnNm'))
+        self.arr_code = _get_first(data, ('h_arv_rs_stn_cd', 'arvRsStnCd'))
+        self.arr_date = _get_first(data, ('h_arv_dt', 'arvDt', 'runDt'))
+        self.arr_time = _get_first(data, ('h_arv_tm', 'arvTm'))
+
+        self.run_date = _get_first(data, ('h_run_dt', 'runDt', 'dptDt'))
+        self.reserve_possible = _get_first(data, ('h_rsv_psb_flg', 'rsvPsbFlg'), 'Y')
+        self.reserve_possible_name = _get_first(data, ('h_rsv_psb_nm', 'rsvPsbNm'), '')
+        self.special_seat = _get_first(data, ('h_spe_rsv_cd', 'speRsvCd'), '00')
+        self.general_seat = _get_first(data, ('h_gen_rsv_cd', 'genRsvCd'), '11')
+        self.wait_reserve_flag = _get_first(data, ('h_wait_rsv_flg', 'waitRsvFlg'))
+        if self.wait_reserve_flag:
+            self.wait_reserve_flag = int(self.wait_reserve_flag)
+
+        self.price = _get_first(data, ('cmtrPrc', 'h_rcvd_amt'))
+        self.fare = _get_first(data, ('h_rcvd_fare', 'rcvdFare'))
+        self.discount_name = self.reserve_possible_name
+        self.general_discount_rate = _get_first(data, ('h_gen_disc_rt', 'genDiscRt'))
+        self.special_discount_rate = _get_first(data, ('h_spe_disc_rt', 'speDiscRt'))
+        self.train_discount_rate = _get_first(data, ('h_train_disc_gen_rt', 'trainDiscGenRt'))
+        self.general_remaining_seats = _get_first(data, ('h_std_rest_seat_cnt', 'stdRestSeatCnt'))
+        self.standing_remaining_seats = _get_first(data, ('h_stnd_rest_seat_cnt', 'stndRestSeatCnt'))
+        self.standing_seat = _get_first(data, ('h_stnd_rsv_cd', 'stndRsvCd'))
+        self.standing_seat_name = _get_first(data, ('h_stnd_rsv_nm', 'stndRsvNm'))
+        self.route_code = _get_first(data, ('routCd', 'h_rout_cd'))
+        self.route_name = _get_first(data, ('dturNm', 'h_rout_nm'))
+        self.raw = data
+
+    def __repr__(self):
+        train_name = self.train_type_name or self.train_group or "NCard"
+        route = "%s~%s" % (self.dep_name or "", self.arr_name or "")
+        if self.dep_time and self.arr_time:
+            route += "(%s:%s~%s:%s)" % (
+                self.dep_time[:2], self.dep_time[2:4],
+                self.arr_time[:2], self.arr_time[2:4],
+            )
+        if self.price:
+            route += " %s원" % self.price
+        if self.discount_name:
+            route += " %s" % self.discount_name
+        return "[%s] %s" % (train_name, route)
+
+
+class NCard:
+    """Owned N-card metadata from KorailTalk's MyTicket flow."""
+
+    def __init__(self, ticket_data, detail_data=None):
+        detail_data = detail_data or {}
+        dcnt_info = detail_data.get('dcnt_crd_info') or {}
+        segments = dcnt_info.get('appSegList') or dcnt_info.get('appSeg_info') or []
+
+        self.raw_ticket = ticket_data
+        self.raw_detail = detail_data
+        self.ticket_kind_code = _get_utf8(ticket_data, 'h_tk_knd_cd')
+        self.ticket_kind_name = _get_utf8(detail_data, 'h_tk_knd_nm') or _get_utf8(ticket_data, 'h_tk_knd_nm')
+        self.valid = _get_utf8(ticket_data, 'cmtrVlidFlg')
+        self.dep_name = _get_utf8(ticket_data, 'h_dpt_rs_stn_nm')
+        self.arr_name = _get_utf8(ticket_data, 'h_arv_rs_stn_nm')
+        self.sale_date = _get_utf8(ticket_data, 'h_orgtk_sale_dt')
+        self.sale_info1 = _get_utf8(ticket_data, 'h_orgtk_wct_no')
+        self.sale_info2 = _get_utf8(ticket_data, 'h_orgtk_ret_sale_dt')
+        self.sale_info3 = _get_utf8(ticket_data, 'h_orgtk_sale_sqno')
+        self.sale_info4 = _get_utf8(ticket_data, 'h_orgtk_ret_pwd')
+        self.price = _get_utf8(ticket_data, 'h_rcvd_amt')
+        self.pnr_no = _get_utf8(ticket_data, 'h_pnr_no')
+        self.discount_card_no = _get_utf8(dcnt_info, 'h_dcnt_crd_no')
+        self.term_extension_possible = _get_utf8(dcnt_info, 'h_dcnt_crd_trm_extn_psb_flg')
+        self.reservation_discount_card_no = _get_utf8(detail_data, 'h_rsv_disc_crd_no')
+        self.reservation_discount_card_name = _get_utf8(detail_data, 'h_rsv_disc_crd_knd_nm')
+        self.segments = segments
+
+    def get_ticket_no(self):
+        return "-".join(map(str, (self.sale_info1, self.sale_info2, self.sale_info3, self.sale_info4)))
+
+    @property
+    def dcnt_card_no(self):
+        return self.discount_card_no
+
+    def __repr__(self):
+        route = "%s~%s" % (self.dep_name or "", self.arr_name or "")
+        kind = self.ticket_kind_name or "NCard"
+        return "[%s] %s %s" % (kind, route, self.get_ticket_no())
+
+
 class Ticket(Train):
     """Ticket object"""
 
@@ -394,6 +623,12 @@ class SeniorPassenger(Passenger):
         Passenger.__init_internal__(self, '1', count, discount_type, card, card_no, card_pw)
 
 
+# noinspection PyMissingConstructor
+class NCardPassenger(AdultPassenger):
+    def __init__(self, count=1, card_no='', card='', card_pw='', discount_type=NCARD_DISCOUNT_CODE):
+        AdultPassenger.__init__(self, count, discount_type, card, card_no, card_pw)
+
+
 class TrainType:
     KTX = "100"  # "KTX, KTX-산천",
     SAEMAEUL = "101"  # "새마을호",
@@ -541,10 +776,11 @@ class SoldOutError(KorailError):
 # noinspection PyUnresolvedReferences,PyRedeclaration
 class Korail(object):
     """Korail object"""
-    _session = requests.session()
+    _session = None
 
-    _device = 'AD'
-    _version = '190617001'
+    _device, _version = 'AD', '250601002'
+    _sid_key = b"2485dd54d9deaa36"
+    _device_id = "558a4f02041657ea"
     _key = 'korail1234567890'
 
     _idx = None
@@ -554,13 +790,31 @@ class Korail(object):
     email = None
 
     def __init__(self, korail_id, korail_pw, auto_login=True, want_feedback=False):
+        self._session = requests.session()
         self._session.headers.update({'User-Agent': DEFAULT_USER_AGENT})
+        self._engine = DynaPathMasterEngine()
         self.korail_id = korail_id
         self.korail_pw = korail_pw
         self.want_feedback = want_feedback
         self.logined = False
         if auto_login:
             self.login(korail_id, korail_pw)
+
+    def _generate_sid(self, ts):
+        plaintext = (f"{self._device}{ts}").encode('utf-8')
+        cipher = AES.new(self._sid_key, AES.MODE_CBC, iv=self._sid_key)
+        return base64.b64encode(cipher.encrypt(pad(plaintext, 16))).decode('utf-8') + "\n"
+
+    def _get_auth_headers_and_sid(self, url):
+        headers = {}
+        sid = None
+        if any(path in url for path in DYNAPATH_PATHS):
+            ts = int(time.time() * 1000)
+            rand = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+            token = self._engine.generate_token(self._device_id, ts, rand)
+            headers['x-dynapath-m-token'] = token
+            sid = self._generate_sid(ts)
+        return headers, sid
 
     def __enc_password(self, password):
         url = KORAIL_CODE
@@ -632,9 +886,11 @@ When you want change ID using existing object,
             txt_input_flg = '2'
 
         url = KORAIL_LOGIN
+        headers, sid = self._get_auth_headers_and_sid(url)
+
         data = {
             'Device': self._device,
-            'Version': '231231001', # HACK
+            'Version': self._version, # HACK
             #'Version': self._version,
             # 2 : for membership number,
             # 4 : for phone number,
@@ -644,8 +900,10 @@ When you want change ID using existing object,
             'txtPwd': self.__enc_password(korail_pw),
             'idx': self._idx
         }
+        if sid:
+            data['Sid'] = sid
 
-        r = self._session.post(url, data=data)
+        r = self._session.post(url, data=data, headers=headers)
         j = json.loads(r.text)
 
         if j['strResult'] == 'SUCC' and j.get('strMbCrdNo') is not None:
@@ -811,6 +1069,7 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
         senior_count = reduce(lambda a, b: a + b.count, list(filter(lambda x: isinstance(x, SeniorPassenger), passengers)), 0)
 
         url = KORAIL_SEARCH_SCHEDULE
+        headers, sid = self._get_auth_headers_and_sid(url)
         data = {
             'Device': self._device,
             'radJobId': '1',
@@ -838,7 +1097,7 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
         }
 
 
-        r = self._session.get(url, params=data)
+        r = self._session.post(url, params=data, headers=headers)
         j = json.loads(r.text)
 
         if self._result_check(j):
@@ -864,36 +1123,218 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
 
             return trains
 
-    def reserve(self, train, passengers=None, option=ReserveOption.GENERAL_FIRST, try_waiting=False):
-        """Reserve a train.
+    def search_ncard_trains(self, dep, arr, dcnt_card_kind_mg_no, use_psb_tno,
+                            date=None, time=None, train_type=TrainType.ALL,
+                            dcnt_card_kind_cd="MMM", use_trm_dno="",
+                            qry_pg_no="1", dirt_chtn_dv_cd="1"):
+        """Search N-card discounted ticket train candidates.
 
-:param train: An instance of `Train`.
-:param passengers=None: (optional) List of Passenger Objects. None means 1 AdultPassenger.
-:param option=ReserveOption.GENERAL_FIRST : (optional)
-
-When tickets are not enough much for passengers, it raises SoldOutError.
-
-If you want to select priority of seat grade, general or special,
-There are 4 options in ReserveOption class.
-
-- GENERAL_FIRST : Economic than Comfortable.
-- GENERAL_ONLY  : Reserve only general seats. You are poorman ;-)
-- SPECIAL_FIRST : Comfortable than Economic.
-- SPECIAL_ONLY  : Richman.
-
-:param option=try_waiting : (optional)
-
-When the train allows waiting, enroll for the waiting list instead of failing in case there are no seats in the train.
-
+        `dcnt_card_kind_mg_no` and `use_psb_tno` come from the user's owned
+        N-card metadata in KorailTalk. This method only searches candidates; it
+        does not reserve or pay for a ticket.
         """
+        kst_now = datetime.utcnow() + timedelta(hours=9)
+        if date is None:
+            date = kst_now.strftime("%Y%m%d")
+        if time is None:
+            time = "000000"
 
+        url = KORAIL_NCARD_SCHEDULE_VIEW
+        headers, sid = self._get_auth_headers_and_sid(url)
+        data = {
+            'Device': self._device,
+            'Version': self._version,
+            'Key': self._key,
+            'dptDt': date,
+            'dptRsStnNm': dep,
+            'arvRsStnNm': arr,
+            'dptTm': time,
+            'trnGpCd': train_type,
+            'dirtChtnDvCd': dirt_chtn_dv_cd,
+            'dcntCrdKndCd': dcnt_card_kind_cd,
+            'dcntCrdKndMgNo': dcnt_card_kind_mg_no,
+            'useTrmDno': use_trm_dno,
+            'usePsbTno': use_psb_tno,
+            'qryPgNo': qry_pg_no,
+        }
+        if sid:
+            data['Sid'] = sid
+
+        r = self._session.get(url, params=data, headers=headers)
+        j = json.loads(r.text)
+
+        if self._result_check(j):
+            train_infos = (
+                j.get('trnScdlList') or
+                j.get('trn_scdl_list') or
+                j.get('trn_infos', {}).get('trn_info') or
+                []
+            )
+            if isinstance(train_infos, dict):
+                train_infos = [train_infos]
+
+            trains = [NCardTrain(info) for info in train_infos]
+            if train_type != TrainType.ALL:
+                trains = [train for train in trains if train.train_group == train_type]
+            if len(trains) == 0:
+                raise NoResultsError()
+            return trains
+
+    def search_owned_ncard_trains(self, ncard, dep=None, arr=None, date=None, time=None,
+                                  train_type=None, segment_index=0, passenger_count=1,
+                                  room_class="9", seat_attribute="015",
+                                  dirt_chtn_dv_cd="1", transfer_arrival=""):
+        """Search discounted trains for an already-owned N-card.
+
+        This mirrors KorailTalk's "My Ticket > Pass > N-card > Ticket booking"
+        flow. It uses the owned N-card detail returned by :meth:`owned_ncards`
+        and the seat-assignment schedule endpoint; it does not reserve or pay
+        for a ticket.
+        """
+        kst_now = datetime.utcnow() + timedelta(hours=9)
+        if date is None:
+            date = kst_now.strftime("%Y%m%d")
+        if time is None:
+            time = "000000"
+
+        segments = ncard.segments or []
+        if not segments:
+            raise KorailError("N-card has no route segment metadata")
+        segment = segments[segment_index]
+
+        if dep is None:
+            dep = _get_utf8(segment, 'dptRsStnNm') or ncard.dep_name
+        if arr is None:
+            arr = _get_utf8(segment, 'arvRsStnNm') or ncard.arr_name
+        if train_type is None:
+            train_type = _get_utf8(segment, 'trnGpCd') or TrainType.KTX
+
+        data = {
+            'Device': self._device,
+            'Version': self._version,
+            'Key': self._key,
+            'menuId': NCARD_SEAT_ASSIGN_MENU_ID,
+            'dptDt': date,
+            'dptTm': time,
+            'dptRsStnNm': dep,
+            'arvRsStnNm': arr,
+            'trnGpCd': train_type,
+            'psrmClCd': room_class,
+            'seatAttCd1': seat_attribute,
+            'psgNum1': str(passenger_count),
+            'stlbDturDvNm1': _get_utf8(segment, 'stlbDturDvNm') or '',
+            'dirtChtnDvCd': dirt_chtn_dv_cd,
+            'chtnArvRsStnNm': transfer_arrival,
+        }
+
+        r = self._session.post(KORAIL_SEAT_ASSIGN_SCHEDULE_VIEW, data=data)
+        j = json.loads(r.text)
+
+        if self._result_check(j):
+            train_infos = (
+                j.get('trn_infos', {}).get('trn_info') or
+                j.get('trn_info') or
+                []
+            )
+            if isinstance(train_infos, dict):
+                train_infos = [train_infos]
+
+            trains = [NCardTrain(info) for info in train_infos]
+            if train_type != TrainType.ALL:
+                trains = [train for train in trains if train.train_group == train_type]
+            if len(trains) == 0:
+                raise NoResultsError()
+            return trains
+
+    def ncard_history(self, dcnt_card_no):
+        """Return raw N-card usage history for an already known N-card number."""
+        url = KORAIL_NCARD_USE_HISTORY
+        headers, sid = self._get_auth_headers_and_sid(url)
+        data = {
+            'Device': self._device,
+            'Version': self._version,
+            'Key': self._key,
+            'dcntCrdNo': dcnt_card_no,
+        }
+        if sid:
+            data['Sid'] = sid
+
+        r = self._session.get(url, params=data, headers=headers)
+        j = json.loads(r.text)
+        if self._result_check(j):
+            return j
+
+    def owned_ncards(self):
+        """Return owned N-cards from KorailTalk's current-ticket list.
+
+        KorailTalk shows purchased N-cards under "My Ticket > Commutation/Pass"
+        using the same MyTicketList endpoint as ordinary tickets, then fetches
+        details through SelTicketInfo. This method mirrors only that read-only
+        lookup path.
+        """
+        list_data = {
+            'Device': self._device,
+            'Version': self._version,
+            'Key': self._key,
+            'txtDeviceId': '',
+            'txtIndex': '1',
+            'h_page_no': '1',
+            'h_abrd_dt_from': '',
+            'h_abrd_dt_to': '',
+            'hiduserYn': 'Y',
+            'hidName': '',
+            'hidTeleNo': '',
+            'hidPwd': '',
+            'tsRsStnCd': '',
+        }
+        r = self._session.post(KORAIL_MYTICKETLIST, data=list_data)
+        j = json.loads(r.text)
+
+        try:
+            self._result_check(j)
+        except NoResultsError:
+            return []
+
+        ncards = []
+        for reservation in j.get('reservation_list', []):
+            ticket_list = reservation.get('ticket_list') or []
+            if not ticket_list:
+                continue
+            train_info = ticket_list[0].get('train_info') or []
+            if not train_info:
+                continue
+            ticket_data = train_info[0]
+            ticket_kind = _get_utf8(ticket_data, 'h_tk_knd_nm') or ''
+            if _get_utf8(ticket_data, 'h_tk_knd_cd') != '81' and 'N카드' not in ticket_kind:
+                continue
+
+            detail_data = {
+                'Device': self._device,
+                'Version': self._version,
+                'Key': self._key,
+                'h_orgtk_ret_sale_dt': _get_utf8(ticket_data, 'h_orgtk_ret_sale_dt'),
+                'h_orgtk_wct_no': _get_utf8(ticket_data, 'h_orgtk_wct_no'),
+                'h_orgtk_sale_sqno': _get_utf8(ticket_data, 'h_orgtk_sale_sqno'),
+                'h_orgtk_ret_pwd': _get_utf8(ticket_data, 'h_orgtk_ret_pwd'),
+                'h_purchase_history': '',
+            }
+            detail_response = self._session.post(KORAIL_MYTICKET_SEAT, data=detail_data)
+            detail = json.loads(detail_response.text)
+            try:
+                self._result_check(detail)
+            except KorailError:
+                detail = {}
+            ncards.append(NCard(ticket_data, detail))
+
+        return ncards
+
+    def _select_reservation_seat_type(self, train, option, try_waiting):
         reserving_seat = True
-        # 좌석 선택 옵션에 따라 결정.
         seat_type = None
         try:
-            if train.has_seat() is False:  # 자리가 둘다 없는 경우는 SoldOutError발생
+            if train.has_seat() is False:
                 raise SoldOutError()
-            elif option == ReserveOption.GENERAL_ONLY:  # 이후 일반석, 특실 중 하나는 무조건 있는 조건
+            elif option == ReserveOption.GENERAL_ONLY:
                 if train.has_general_seat():
                     seat_type = '1'
                 else:
@@ -919,15 +1360,18 @@ When the train allows waiting, enroll for the waiting list instead of failing in
                 seat_type = '1'
             else:
                 raise e
+        return reserving_seat, seat_type
+
+    def _build_reservation_data(self, train, passengers=None,
+                                option=ReserveOption.GENERAL_FIRST,
+                                try_waiting=False):
+        reserving_seat, seat_type = self._select_reservation_seat_type(train, option, try_waiting)
 
         if passengers is None:
             passengers = [AdultPassenger()]
 
-        print(train)
-
         passengers = Passenger.reduce(passengers)
-        cnt = reduce(lambda x,y: x + y.count, passengers, 0)
-        url = KORAIL_TICKETRESERVATION
+        cnt = reduce(lambda x, y: x + y.count, passengers, 0)
         data = {
             'Device': self._device,
             'Version': self._version,
@@ -972,22 +1416,51 @@ When the train allows waiting, enroll for the waiting list instead of failing in
             'txtTrnClsfCd2': '',
             'txtPsrmClCd2': '',
             'txtChgFlg2': '',
-
-            # 이하 txtTotPsgCnt 만큼 반복
-            # 'txtPsgTpCd1'    : '1',   #손님 종류 (어른, 어린이)
-            # 'txtDiscKndCd1'  : '000', #할인 타입 (경로, 동반유아, 군장병 등..)
-            # 'txtCompaCnt1'   : '1',   #인원수
-            # 'txtCardCode_1'  : '',
-            # 'txtCardNo_1'    : '',
-            # 'txtCardPw_1'    : '',
         }
 
         index = 1
         for psg in passengers:
             data.update(psg.get_dict(index))
             index += 1
+        return data
 
-        r = self._session.get(url, params=data)
+    def build_ncard_reservation_payload(self, train, ncard_no,
+                                        option=ReserveOption.GENERAL_FIRST,
+                                        try_waiting=False):
+        """Build, but do not submit, an N-card discounted reservation payload."""
+        passengers = [NCardPassenger(card_no=ncard_no)]
+        return self._build_reservation_data(train, passengers, option, try_waiting)
+
+    def reserve(self, train, passengers=None, option=ReserveOption.GENERAL_FIRST, try_waiting=False):
+        """Reserve a train.
+
+:param train: An instance of `Train`.
+:param passengers=None: (optional) List of Passenger Objects. None means 1 AdultPassenger.
+:param option=ReserveOption.GENERAL_FIRST : (optional)
+
+When tickets are not enough much for passengers, it raises SoldOutError.
+
+If you want to select priority of seat grade, general or special,
+There are 4 options in ReserveOption class.
+
+- GENERAL_FIRST : Economic than Comfortable.
+- GENERAL_ONLY  : Reserve only general seats. You are poorman ;-)
+- SPECIAL_FIRST : Comfortable than Economic.
+- SPECIAL_ONLY  : Richman.
+
+:param option=try_waiting : (optional)
+
+When the train allows waiting, enroll for the waiting list instead of failing in case there are no seats in the train.
+
+        """
+
+        print(train)
+
+        url = KORAIL_TICKETRESERVATION
+        headers, sid = self._get_auth_headers_and_sid(url)
+        data = self._build_reservation_data(train, passengers, option, try_waiting)
+
+        r = self._session.get(url, params=data, headers=headers)
         j = json.loads(r.text)
         if self._result_check(j):
             rsv_id = j['h_pnr_no']

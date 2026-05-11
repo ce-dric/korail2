@@ -1,5 +1,5 @@
 # -*- coding:utf-8 -*-
-from unittest import TestCase
+from unittest import TestCase, skipUnless
 import os.path
 from datetime import datetime, time, date, timedelta
 from korail2 import *
@@ -226,9 +226,9 @@ class TestKorail(TestCase):
         else:
             self.skipTest("No Empty Seats tomorrow.")
 
+    @skipUnless(os.environ.get("KORAIL_ALLOW_MULTI_RESERVE") == "1",
+                "Set KORAIL_ALLOW_MULTI_RESERVE=1 to run live multi-passenger reservation/cancel test")
     def test_reserve_and_cancel_multi(self):
-        # self.skipTest("Not implemented")
-
         passengers = (
             AdultPassenger(1),
             ChildPassenger(1),
@@ -257,6 +257,8 @@ class TestKorail(TestCase):
         else:
             self.skipTest("No Empty Seats tomorrow.")
 
+    @skipUnless(os.environ.get("KORAIL_ALLOW_CANCEL_ALL") == "1",
+                "Set KORAIL_ALLOW_CANCEL_ALL=1 to cancel all live reservations")
     def test_cancel_all(self):
         for rsv in self.korail.reservations():
             res = self.korail.cancel(rsv)

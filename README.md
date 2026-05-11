@@ -199,6 +199,41 @@ There are 4 options in ReserveOption class.
 >>> korail.reserve(trains[0], psgrs, ReserveOption.GENERAL_ONLY)
 ```
 
+#### 3-1. Experimental N-card discounted tickets ####
+
+Korail N-card support is experimental. It is based on static analysis of the
+KorailTalk Android API and keeps payment automation out of scope.
+
+For already-owned N-cards, use `owned_ncards` first and pass one of those cards
+to `search_owned_ncard_trains`. This mirrors KorailTalk's "My Ticket > Pass >
+N-card > Ticket booking" train lookup flow and returns discount/sold-out/
+standing-seat labels from the seat-assignment schedule API.
+
+```python
+>>> cards = korail.owned_ncards()
+>>> trains = korail.search_owned_ncard_trains(
+...     cards[0],
+...     dep='대전',
+...     arr='서울',
+...     date='20260512',
+...     time='100000',
+...     train_type=TrainType.KTX,
+... )
+>>> trains[0].discount_name
+'15%할인'
+>>> payload = korail.build_ncard_reservation_payload(
+...     trains[0],
+...     ncard_no='YOUR_NCARD_NO',
+... )
+>>> payload['txtDiscKndCd1']
+'153'
+```
+
+`search_ncard_trains` is retained for N-card kind/product schedule research,
+but bought-card ticket booking should prefer `search_owned_ncard_trains`.
+If Korail only allows immediate payment/issuance for a discounted ticket,
+complete the final step in the official app or website.
+
 ### 4. Show reservations ####
 
 You can get your tickes with `tickets` method.
