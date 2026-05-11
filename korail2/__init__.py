@@ -10,10 +10,11 @@
 """
 from .korail2 import (
     Korail, Passenger, AdultPassenger, ChildPassenger, ToddlerPassenger,
-    SeniorPassenger, NCardPassenger, TrainType, ReserveOption, NCardTrain,
+    SeniorPassenger, NCardPassenger, TrainType, ReserveOption, NCard,
+    NCardTrain,
 )
 from .korail2 import KorailError, NeedToLoginError, SoldOutError, NoResultsError
 
 __all__ = ['Korail', 'Passenger', 'AdultPassenger', 'ChildPassenger', 'ToddlerPassenger', 'SeniorPassenger', 'NCardPassenger',
-           'TrainType', 'ReserveOption', 'NCardTrain',
+           'TrainType', 'ReserveOption', 'NCard', 'NCardTrain',
            'KorailError', 'NeedToLoginError', 'SoldOutError', 'NoResultsError']

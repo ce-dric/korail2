@@ -418,6 +418,47 @@ class NCardTrain(Train):
         return "[%s] %s" % (train_name, route)
 
 
+class NCard:
+    """Owned N-card metadata from KorailTalk's MyTicket flow."""
+
+    def __init__(self, ticket_data, detail_data=None):
+        detail_data = detail_data or {}
+        dcnt_info = detail_data.get('dcnt_crd_info') or {}
+        segments = dcnt_info.get('appSegList') or dcnt_info.get('appSeg_info') or []
+
+        self.raw_ticket = ticket_data
+        self.raw_detail = detail_data
+        self.ticket_kind_code = _get_utf8(ticket_data, 'h_tk_knd_cd')
+        self.ticket_kind_name = _get_utf8(detail_data, 'h_tk_knd_nm') or _get_utf8(ticket_data, 'h_tk_knd_nm')
+        self.valid = _get_utf8(ticket_data, 'cmtrVlidFlg')
+        self.dep_name = _get_utf8(ticket_data, 'h_dpt_rs_stn_nm')
+        self.arr_name = _get_utf8(ticket_data, 'h_arv_rs_stn_nm')
+        self.sale_date = _get_utf8(ticket_data, 'h_orgtk_sale_dt')
+        self.sale_info1 = _get_utf8(ticket_data, 'h_orgtk_wct_no')
+        self.sale_info2 = _get_utf8(ticket_data, 'h_orgtk_ret_sale_dt')
+        self.sale_info3 = _get_utf8(ticket_data, 'h_orgtk_sale_sqno')
+        self.sale_info4 = _get_utf8(ticket_data, 'h_orgtk_ret_pwd')
+        self.price = _get_utf8(ticket_data, 'h_rcvd_amt')
+        self.pnr_no = _get_utf8(ticket_data, 'h_pnr_no')
+        self.discount_card_no = _get_utf8(dcnt_info, 'h_dcnt_crd_no')
+        self.term_extension_possible = _get_utf8(dcnt_info, 'h_dcnt_crd_trm_extn_psb_flg')
+        self.reservation_discount_card_no = _get_utf8(detail_data, 'h_rsv_disc_crd_no')
+        self.reservation_discount_card_name = _get_utf8(detail_data, 'h_rsv_disc_crd_knd_nm')
+        self.segments = segments
+
+    def get_ticket_no(self):
+        return "-".join(map(str, (self.sale_info1, self.sale_info2, self.sale_info3, self.sale_info4)))
+
+    @property
+    def dcnt_card_no(self):
+        return self.discount_card_no
+
+    def __repr__(self):
+        route = "%s~%s" % (self.dep_name or "", self.arr_name or "")
+        kind = self.ticket_kind_name or "NCard"
+        return "[%s] %s %s" % (kind, route, self.get_ticket_no())
+
+
 class Ticket(Train):
     """Ticket object"""
 
@@ -1106,7 +1147,7 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
         if sid:
             data['Sid'] = sid
 
-        r = self._session.post(url, data=data, headers=headers)
+        r = self._session.get(url, params=data, headers=headers)
         j = json.loads(r.text)
 
         if self._result_check(j):
@@ -1137,10 +1178,74 @@ There are 4 types of Passengers now, AdultPassenger, ChildPassenger, ToddlerPass
         if sid:
             data['Sid'] = sid
 
-        r = self._session.post(url, data=data, headers=headers)
+        r = self._session.get(url, params=data, headers=headers)
         j = json.loads(r.text)
         if self._result_check(j):
             return j
+
+    def owned_ncards(self):
+        """Return owned N-cards from KorailTalk's current-ticket list.
+
+        KorailTalk shows purchased N-cards under "My Ticket > Commutation/Pass"
+        using the same MyTicketList endpoint as ordinary tickets, then fetches
+        details through SelTicketInfo. This method mirrors only that read-only
+        lookup path.
+        """
+        list_data = {
+            'Device': self._device,
+            'Version': self._version,
+            'Key': self._key,
+            'txtDeviceId': '',
+            'txtIndex': '1',
+            'h_page_no': '1',
+            'h_abrd_dt_from': '',
+            'h_abrd_dt_to': '',
+            'hiduserYn': 'Y',
+            'hidName': '',
+            'hidTeleNo': '',
+            'hidPwd': '',
+            'tsRsStnCd': '',
+        }
+        r = self._session.post(KORAIL_MYTICKETLIST, data=list_data)
+        j = json.loads(r.text)
+
+        try:
+            self._result_check(j)
+        except NoResultsError:
+            return []
+
+        ncards = []
+        for reservation in j.get('reservation_list', []):
+            ticket_list = reservation.get('ticket_list') or []
+            if not ticket_list:
+                continue
+            train_info = ticket_list[0].get('train_info') or []
+            if not train_info:
+                continue
+            ticket_data = train_info[0]
+            ticket_kind = _get_utf8(ticket_data, 'h_tk_knd_nm') or ''
+            if _get_utf8(ticket_data, 'h_tk_knd_cd') != '81' and 'N카드' not in ticket_kind:
+                continue
+
+            detail_data = {
+                'Device': self._device,
+                'Version': self._version,
+                'Key': self._key,
+                'h_orgtk_ret_sale_dt': _get_utf8(ticket_data, 'h_orgtk_ret_sale_dt'),
+                'h_orgtk_wct_no': _get_utf8(ticket_data, 'h_orgtk_wct_no'),
+                'h_orgtk_sale_sqno': _get_utf8(ticket_data, 'h_orgtk_sale_sqno'),
+                'h_orgtk_ret_pwd': _get_utf8(ticket_data, 'h_orgtk_ret_pwd'),
+                'h_purchase_history': '',
+            }
+            detail_response = self._session.post(KORAIL_MYTICKET_SEAT, data=detail_data)
+            detail = json.loads(detail_response.text)
+            try:
+                self._result_check(detail)
+            except KorailError:
+                detail = {}
+            ncards.append(NCard(ticket_data, detail))
+
+        return ncards
 
     def _select_reservation_seat_type(self, train, option, try_waiting):
         reserving_seat = True
