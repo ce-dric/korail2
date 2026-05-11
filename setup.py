@@ -3,23 +3,7 @@
 Korail2 -- Korail (www.letskorail.com) wrapper for Python.
 ==========================================================
 
-If you're reading this code, you should know what Korail is.
-
-Just play. Have fun. Enjoy the Korail2!
-```````````````````````````````````````
-
-::
-
-    >>> from korail2 import Korail
-
-Links
-`````
-
-* `GitHub repository <http://github.com/carpedm20/korail2>`_
-* `development version
-  <http://github.com/carpedm20/korail2/zipball/master>`_
-
-
+Fork of korail2 with N-card discount support.
 """
 from __future__ import with_statement
 
@@ -35,42 +19,36 @@ version = '0.4.0'
 
 import codecs
 
-with codecs.open('README.rst', 'r', encoding='utf8') as f:
+with codecs.open('README.md', 'r', encoding='utf8') as f:
     long_desc = f.read()
 
 setup(
     name='korail2',
     packages=['korail2'],
     version=version,
-    description='Korail(www.letskorail.com) wrapper for Python',
+    description='Korail(www.letskorail.com) wrapper for Python (fork with N-card discount support)',
     long_description=long_desc,
+    long_description_content_type='text/markdown',
     license='BSD License',
-    author='Taehoon Kim',
-    author_email='carpedm20@gmail.com',
-    url='http://github.com/carpedm20/korail2',
-    keywords=['Korail'],
+    author='Changwoo Song',
+    author_email='',
+    url='https://github.com/ce-dric/korail2',
+    keywords=['Korail', 'KTX', 'N-card'],
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 3 - Alpha',
         'Environment :: Console',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.6',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.1',
-        'Programming Language :: Python :: 3.2',
-        'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: Implementation :: CPython',
-        'Programming Language :: Python :: Implementation :: PyPy',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
     ],
     install_requires=[
         'requests',
         'six',
-        'PyCryptodome'
+        'pycryptodome'
     ],
 )
