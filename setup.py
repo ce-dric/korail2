@@ -15,15 +15,17 @@ except ImportError:
     from setuptools import setup
 
 # detect the current version
-version = '0.4.0'
+version = '0.1.0'
 
 import codecs
+import os
 
-with codecs.open('README.md', 'r', encoding='utf8') as f:
+here = os.path.dirname(os.path.abspath(__file__))
+with codecs.open(os.path.join(here, 'README.md'), 'r', encoding='utf8') as f:
     long_desc = f.read()
 
 setup(
-    name='korail2',
+    name='korail2-ncard',
     packages=['korail2'],
     version=version,
     description='Korail(www.letskorail.com) wrapper for Python (fork with N-card discount support)',

@@ -26,15 +26,15 @@ Added on top of the original project:
 Installing
 ----------
 
-Not published to PyPI. Install from source:
+Install from PyPI:
 
-    $ git clone <this-repo-url>
+    $ pip install korail2-ncard pycryptodome
+
+Or install from source:
+
+    $ git clone https://github.com/ce-dric/korail2.git
     $ cd korail2
     $ pip install -e .
-
-Or install dependencies directly:
-
-    $ pip install requests six pycryptodome
 
 
 Using
